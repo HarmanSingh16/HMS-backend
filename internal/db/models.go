@@ -54,6 +54,51 @@ func (ns NullAccountStatus) Value() (driver.Value, error) {
 	return string(ns.AccountStatus), nil
 }
 
+type AppointmentStatus string
+
+const (
+	AppointmentStatusBooked    AppointmentStatus = "booked"
+	AppointmentStatusCheckedIn AppointmentStatus = "checked_in"
+	AppointmentStatusCompleted AppointmentStatus = "completed"
+	AppointmentStatusCancelled AppointmentStatus = "cancelled"
+	AppointmentStatusNoShow    AppointmentStatus = "no_show"
+)
+
+func (e *AppointmentStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AppointmentStatus(s)
+	case string:
+		*e = AppointmentStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AppointmentStatus: %T", src)
+	}
+	return nil
+}
+
+type NullAppointmentStatus struct {
+	AppointmentStatus AppointmentStatus `json:"appointment_status"`
+	Valid             bool              `json:"valid"` // Valid is true if AppointmentStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAppointmentStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.AppointmentStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AppointmentStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAppointmentStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AppointmentStatus), nil
+}
+
 type UserRole string
 
 const (
@@ -107,6 +152,28 @@ type Account struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type Appointment struct {
+	ID                 int32              `json:"id"`
+	DoctorID           int32              `json:"doctor_id"`
+	PatientID          int32              `json:"patient_id"`
+	StartsAt           pgtype.Timestamptz `json:"starts_at"`
+	EndsAt             pgtype.Timestamptz `json:"ends_at"`
+	Status             AppointmentStatus  `json:"status"`
+	CancellationReason pgtype.Text        `json:"cancellation_reason"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AppointmentStatusEvent struct {
+	ID            int64                 `json:"id"`
+	AppointmentID int32                 `json:"appointment_id"`
+	FromStatus    NullAppointmentStatus `json:"from_status"`
+	ToStatus      AppointmentStatus     `json:"to_status"`
+	ChangedBy     pgtype.Int4           `json:"changed_by"`
+	Reason        pgtype.Text           `json:"reason"`
+	CreatedAt     pgtype.Timestamptz    `json:"created_at"`
+}
+
 type AuditLog struct {
 	ID         int64              `json:"id"`
 	ActorID    pgtype.Int4        `json:"actor_id"`
@@ -125,6 +192,25 @@ type Department struct {
 type Doctor struct {
 	AccountID    int32       `json:"account_id"`
 	DepartmentID pgtype.Int4 `json:"department_id"`
+}
+
+type DoctorOfficeHour struct {
+	ID        int32              `json:"id"`
+	DoctorID  int32              `json:"doctor_id"`
+	Weekday   int16              `json:"weekday"`
+	StartTime pgtype.Time        `json:"start_time"`
+	EndTime   pgtype.Time        `json:"end_time"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DoctorTimeOff struct {
+	ID        int32              `json:"id"`
+	DoctorID  int32              `json:"doctor_id"`
+	StartsAt  pgtype.Timestamptz `json:"starts_at"`
+	EndsAt    pgtype.Timestamptz `json:"ends_at"`
+	Reason    pgtype.Text        `json:"reason"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type Invite struct {

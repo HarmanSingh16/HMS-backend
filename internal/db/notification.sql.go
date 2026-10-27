@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelPendingNotificationsByAppointmentID = `-- name: CancelPendingNotificationsByAppointmentID :exec
+UPDATE notifications
+SET status = 'cancelled'
+WHERE appointment_id = $1
+  AND status = 'pending'
+`
+
+func (q *Queries) CancelPendingNotificationsByAppointmentID(ctx context.Context, appointmentID pgtype.Int4) error {
+	_, err := q.db.Exec(ctx, cancelPendingNotificationsByAppointmentID, appointmentID)
+	return err
+}
+
 const createNotification = `-- name: CreateNotification :one
 INSERT INTO notifications (
     recipient_id,
@@ -61,4 +73,87 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getPendingNotificationsForDispatch = `-- name: GetPendingNotificationsForDispatch :many
+SELECT id, recipient_id, invite_id, appointment_id, type, status, payload, scheduled_for, retry_count
+FROM notifications
+WHERE status = 'pending'
+  AND scheduled_for <= $1
+ORDER BY scheduled_for ASC
+LIMIT $2
+FOR UPDATE SKIP LOCKED
+`
+
+type GetPendingNotificationsForDispatchParams struct {
+	ScheduledFor pgtype.Timestamptz `json:"scheduled_for"`
+	Limit        int32              `json:"limit"`
+}
+
+type GetPendingNotificationsForDispatchRow struct {
+	ID            int32              `json:"id"`
+	RecipientID   int32              `json:"recipient_id"`
+	InviteID      pgtype.Int4        `json:"invite_id"`
+	AppointmentID pgtype.Int4        `json:"appointment_id"`
+	Type          string             `json:"type"`
+	Status        string             `json:"status"`
+	Payload       []byte             `json:"payload"`
+	ScheduledFor  pgtype.Timestamptz `json:"scheduled_for"`
+	RetryCount    int32              `json:"retry_count"`
+}
+
+func (q *Queries) GetPendingNotificationsForDispatch(ctx context.Context, arg GetPendingNotificationsForDispatchParams) ([]GetPendingNotificationsForDispatchRow, error) {
+	rows, err := q.db.Query(ctx, getPendingNotificationsForDispatch, arg.ScheduledFor, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPendingNotificationsForDispatchRow{}
+	for rows.Next() {
+		var i GetPendingNotificationsForDispatchRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RecipientID,
+			&i.InviteID,
+			&i.AppointmentID,
+			&i.Type,
+			&i.Status,
+			&i.Payload,
+			&i.ScheduledFor,
+			&i.RetryCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateNotificationStatus = `-- name: UpdateNotificationStatus :exec
+UPDATE notifications
+SET status = $2,
+    sent_at = $3,
+    retry_count = retry_count + 1,
+    last_error = $4
+WHERE id = $1
+`
+
+type UpdateNotificationStatusParams struct {
+	ID        int32              `json:"id"`
+	Status    string             `json:"status"`
+	SentAt    pgtype.Timestamptz `json:"sent_at"`
+	LastError pgtype.Text        `json:"last_error"`
+}
+
+func (q *Queries) UpdateNotificationStatus(ctx context.Context, arg UpdateNotificationStatusParams) error {
+	_, err := q.db.Exec(ctx, updateNotificationStatus,
+		arg.ID,
+		arg.Status,
+		arg.SentAt,
+		arg.LastError,
+	)
+	return err
 }

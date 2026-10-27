@@ -6,37 +6,63 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	ActivateAccountWithPassword(ctx context.Context, arg ActivateAccountWithPasswordParams) error
+	CancelAppointmentByID(ctx context.Context, arg CancelAppointmentByIDParams) (CancelAppointmentByIDRow, error)
+	CancelBookedAppointmentsInRange(ctx context.Context, arg CancelBookedAppointmentsInRangeParams) ([]CancelBookedAppointmentsInRangeRow, error)
+	CancelPendingNotificationsByAppointmentID(ctx context.Context, appointmentID pgtype.Int4) error
 	CountAccounts(ctx context.Context, arg CountAccountsParams) (int64, error)
+	CountAppointmentsWithDetails(ctx context.Context, arg CountAppointmentsWithDetailsParams) (int64, error)
 	// Used for pagination metadata when searching
 	CountPatients(ctx context.Context, dollar_1 string) (int64, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	CreateAppointment(ctx context.Context, arg CreateAppointmentParams) (Appointment, error)
+	CreateAppointmentStatusEvent(ctx context.Context, arg CreateAppointmentStatusEventParams) (AppointmentStatusEvent, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
 	CreateDepartment(ctx context.Context, name string) (Department, error)
 	CreateDoctor(ctx context.Context, arg CreateDoctorParams) (Doctor, error)
+	CreateDoctorOfficeHour(ctx context.Context, arg CreateDoctorOfficeHourParams) (DoctorOfficeHour, error)
+	CreateDoctorTimeOff(ctx context.Context, arg CreateDoctorTimeOffParams) (DoctorTimeOff, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) (Notification, error)
 	CreatePatient(ctx context.Context, arg CreatePatientParams) (CreatePatientRow, error)
+	DeleteDoctorOfficeHours(ctx context.Context, doctorID int32) error
 	GetAccountByEmail(ctx context.Context, email string) (Account, error)
 	GetAccountByID(ctx context.Context, id int32) (Account, error)
+	GetActiveAppointmentsForDoctorInRange(ctx context.Context, arg GetActiveAppointmentsForDoctorInRangeParams) ([]GetActiveAppointmentsForDoctorInRangeRow, error)
+	GetAppointmentByID(ctx context.Context, id int32) (Appointment, error)
+	GetAppointmentWithDetailsByID(ctx context.Context, id int32) (GetAppointmentWithDetailsByIDRow, error)
+	GetBookedAppointmentsForDoctorInRange(ctx context.Context, arg GetBookedAppointmentsForDoctorInRangeParams) ([]GetBookedAppointmentsForDoctorInRangeRow, error)
 	GetDepartmentById(ctx context.Context, id int32) (Department, error)
 	GetDepartmentByName(ctx context.Context, lower string) (Department, error)
 	GetDoctorByAccountID(ctx context.Context, accountID int32) (Doctor, error)
+	GetDoctorOfficeHours(ctx context.Context, doctorID int32) ([]DoctorOfficeHour, error)
+	GetDoctorProfileByID(ctx context.Context, accountID int32) (GetDoctorProfileByIDRow, error)
 	// Joins accounts so we can return the associated email and role in a single DB query
 	GetInviteByTokenHash(ctx context.Context, tokenHash string) (GetInviteByTokenHashRow, error)
+	GetOverdueBookedAppointmentsForNoShow(ctx context.Context, arg GetOverdueBookedAppointmentsForNoShowParams) ([]GetOverdueBookedAppointmentsForNoShowRow, error)
 	// Retrieves full patient demographics joined with account credentials and status
 	GetPatientByAccountID(ctx context.Context, accountID int32) (GetPatientByAccountIDRow, error)
+	GetPendingNotificationsForDispatch(ctx context.Context, arg GetPendingNotificationsForDispatchParams) ([]GetPendingNotificationsForDispatchRow, error)
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]ListAccountsRow, error)
+	ListActiveDoctors(ctx context.Context, dollar_1 int32) ([]ListActiveDoctorsRow, error)
+	ListAppointmentStatusEventsByAppointmentID(ctx context.Context, appointmentID int32) ([]ListAppointmentStatusEventsByAppointmentIDRow, error)
+	ListAppointmentsWithDetails(ctx context.Context, arg ListAppointmentsWithDetailsParams) ([]ListAppointmentsWithDetailsRow, error)
 	ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([]ListAuditLogsRow, error)
 	ListDepartments(ctx context.Context) ([]Department, error)
+	ListDoctorTimeOffInRange(ctx context.Context, arg ListDoctorTimeOffInRangeParams) ([]DoctorTimeOff, error)
+	ListUpcomingDoctorTimeOff(ctx context.Context, arg ListUpcomingDoctorTimeOffParams) ([]DoctorTimeOff, error)
 	MarkInviteClaimed(ctx context.Context, id int32) error
 	// Fast multi-field search across name, email, and phone with pagination
 	SearchPatients(ctx context.Context, arg SearchPatientsParams) ([]SearchPatientsRow, error)
 	UpdateAccountStatus(ctx context.Context, arg UpdateAccountStatusParams) error
+	UpdateAppointmentStatus(ctx context.Context, arg UpdateAppointmentStatusParams) (Appointment, error)
 	UpdateDepartment(ctx context.Context, arg UpdateDepartmentParams) (Department, error)
+	UpdateNotificationStatus(ctx context.Context, arg UpdateNotificationStatusParams) error
 	// Allows updating demographic contact information
 	UpdatePatientDemographics(ctx context.Context, arg UpdatePatientDemographicsParams) (UpdatePatientDemographicsRow, error)
 }

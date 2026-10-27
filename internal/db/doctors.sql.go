@@ -41,3 +41,90 @@ func (q *Queries) GetDoctorByAccountID(ctx context.Context, accountID int32) (Do
 	err := row.Scan(&i.AccountID, &i.DepartmentID)
 	return i, err
 }
+
+const getDoctorProfileByID = `-- name: GetDoctorProfileByID :one
+SELECT 
+    d.account_id,
+    a.email,
+    a.status,
+    d.department_id,
+    dept.name AS department_name,
+    a.created_at
+FROM doctors d
+JOIN accounts a ON a.id = d.account_id
+LEFT JOIN departments dept ON dept.id = d.department_id
+WHERE d.account_id = $1
+LIMIT 1
+`
+
+type GetDoctorProfileByIDRow struct {
+	AccountID      int32              `json:"account_id"`
+	Email          string             `json:"email"`
+	Status         AccountStatus      `json:"status"`
+	DepartmentID   pgtype.Int4        `json:"department_id"`
+	DepartmentName pgtype.Text        `json:"department_name"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetDoctorProfileByID(ctx context.Context, accountID int32) (GetDoctorProfileByIDRow, error) {
+	row := q.db.QueryRow(ctx, getDoctorProfileByID, accountID)
+	var i GetDoctorProfileByIDRow
+	err := row.Scan(
+		&i.AccountID,
+		&i.Email,
+		&i.Status,
+		&i.DepartmentID,
+		&i.DepartmentName,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listActiveDoctors = `-- name: ListActiveDoctors :many
+SELECT 
+    d.account_id,
+    a.email,
+    d.department_id,
+    dept.name AS department_name,
+    a.created_at
+FROM doctors d
+JOIN accounts a ON a.id = d.account_id
+LEFT JOIN departments dept ON dept.id = d.department_id
+WHERE a.status = 'active'
+  AND ($1::int IS NULL OR d.department_id = $1)
+ORDER BY a.email ASC
+`
+
+type ListActiveDoctorsRow struct {
+	AccountID      int32              `json:"account_id"`
+	Email          string             `json:"email"`
+	DepartmentID   pgtype.Int4        `json:"department_id"`
+	DepartmentName pgtype.Text        `json:"department_name"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) ListActiveDoctors(ctx context.Context, dollar_1 int32) ([]ListActiveDoctorsRow, error) {
+	rows, err := q.db.Query(ctx, listActiveDoctors, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveDoctorsRow{}
+	for rows.Next() {
+		var i ListActiveDoctorsRow
+		if err := rows.Scan(
+			&i.AccountID,
+			&i.Email,
+			&i.DepartmentID,
+			&i.DepartmentName,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
