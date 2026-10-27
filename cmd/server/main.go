@@ -45,17 +45,23 @@ func main() {
 	authService := service.NewAuthService(querier, cfg)
 	accountService := service.NewAccountService(querier, pool, cfg)
 	patientService := service.NewPatientService(querier, pool, cfg)
+	scheduleService := service.NewScheduleService(querier, pool, cfg)
+	appointmentService := service.NewAppointmentService(querier, pool, cfg)
 
 	// Handlers
 	authHandler := handler.NewAuthHanlder(authService)
 	adminHandler := handler.NewAdminHandler(accountService)
 	patientHandler := handler.NewPatientHandler(patientService)
+	doctorHandler := handler.NewDoctorHandler(scheduleService)
+	appointmentHandler := handler.NewAppointmentHandler(appointmentService)
 
 	router := api.SetupRouter(&api.RouterConfig{
-		Config:         cfg,
-		AuthHandler:    authHandler,
-		AdminHandler:   adminHandler,
-		PatientHandler: patientHandler,
+		Config:             cfg,
+		AuthHandler:        authHandler,
+		AdminHandler:       adminHandler,
+		PatientHandler:     patientHandler,
+		DoctorHandler:      doctorHandler,
+		AppointmentHandler: appointmentHandler,
 	})
 
 	srv := &http.Server{

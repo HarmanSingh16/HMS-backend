@@ -11,10 +11,12 @@ import (
 )
 
 type RouterConfig struct {
-	Config         *config.Config
-	AuthHandler    *handler.AuthHandler
-	AdminHandler   *handler.AdminHandler
-	PatientHandler *handler.PatientHandler
+	Config             *config.Config
+	AuthHandler        *handler.AuthHandler
+	AdminHandler       *handler.AdminHandler
+	PatientHandler     *handler.PatientHandler
+	DoctorHandler      *handler.DoctorHandler
+	AppointmentHandler *handler.AppointmentHandler
 }
 
 func SetupRouter(rc *RouterConfig) *gin.Engine {
@@ -94,6 +96,78 @@ func SetupRouter(rc *RouterConfig) *gin.Engine {
 			patientGroup.PUT("/:id",
 				middleware.RequireRoles(domain.RoleReceptionist, domain.RolePatient),
 				rc.PatientHandler.UpdatePatient,
+			)
+		}
+
+		// // Doctor & Schedule resource routes
+		doctorGroup := v1.Group("/doctors")
+		doctorGroup.Use(middleware.Auth(rc.Config.JWTSecret))
+		{
+			// All authenticated roles can list doctors & view their schedule
+			doctorGroup.GET("", rc.DoctorHandler.ListDoctors)
+			doctorGroup.GET("/:id/schedule", rc.DoctorHandler.GetDoctorSchedule)
+			// Slot projection available to Receptionist, Doctor, Patient, Admin
+			doctorGroup.GET(
+				"/:id/available-slots",
+				middleware.RequireRoles(domain.RoleReceptionist, domain.RoleDoctor, domain.RolePatient, domain.RoleAdmin),
+				rc.DoctorHandler.GetAvailableSlots,
+			)
+			// Office hours & time-off: Doctor or Admin
+			doctorGroup.PUT(
+				"/:id/office-hours",
+				middleware.RequireRoles(domain.RoleDoctor, domain.RoleAdmin),
+				rc.DoctorHandler.UpdateOfficeHours,
+			)
+			doctorGroup.POST(
+				"/:id/time-off",
+				middleware.RequireRoles(domain.RoleDoctor, domain.RoleAdmin),
+				rc.DoctorHandler.CreateTimeOff,
+			)
+		}
+
+		// Appointments Lifecycle routes
+		appointmentGroup := v1.Group("/appointments")
+		appointmentGroup.Use(middleware.Auth(rc.Config.JWTSecret))
+		{
+			// Booking: Receptionist only
+			appointmentGroup.POST("",
+				middleware.RequireRoles(domain.RoleReceptionist),
+				rc.AppointmentHandler.BookAppointment,
+			)
+			// Listing appointments: All authenticated roles (scoped inside service)
+			appointmentGroup.GET("",
+				middleware.RequireRoles(domain.RoleReceptionist, domain.RoleDoctor, domain.RolePatient, domain.RoleAdmin),
+				rc.AppointmentHandler.ListAppointments,
+			)
+			// View single appointment: Scoped
+			appointmentGroup.GET("/:id",
+				middleware.RequireRoles(domain.RoleReceptionist, domain.RoleDoctor, domain.RolePatient, domain.RoleAdmin),
+				rc.AppointmentHandler.GetAppointment,
+			)
+			// Check-in: Receptionist only
+			appointmentGroup.POST("/:id/check-in",
+				middleware.RequireRoles(domain.RoleReceptionist),
+				rc.AppointmentHandler.CheckIn,
+			)
+			// Complete: Doctor, Receptionist, Admin
+			appointmentGroup.POST("/:id/complete",
+				middleware.RequireRoles(domain.RoleDoctor, domain.RoleReceptionist, domain.RoleAdmin),
+				rc.AppointmentHandler.Complete,
+			)
+			// Cancel: Patient (up to 1h), Staff (any time)
+			appointmentGroup.POST("/:id/cancel",
+				middleware.RequireRoles(domain.RolePatient, domain.RoleDoctor, domain.RoleReceptionist, domain.RoleAdmin),
+				rc.AppointmentHandler.Cancel,
+			)
+			// Revert No-Show: Receptionist, Doctor, Admin
+			appointmentGroup.POST("/:id/revert-no-show",
+				middleware.RequireRoles(domain.RoleReceptionist, domain.RoleDoctor, domain.RoleAdmin),
+				rc.AppointmentHandler.RevertNoShow,
+			)
+			// Transition timeline
+			appointmentGroup.GET("/:id/history",
+				middleware.RequireRoles(domain.RoleReceptionist, domain.RoleDoctor, domain.RolePatient, domain.RoleAdmin),
+				rc.AppointmentHandler.GetHistory,
 			)
 		}
 	}
