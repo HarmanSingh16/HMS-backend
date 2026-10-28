@@ -1,10 +1,12 @@
 -- name: CreateDoctor :one 
-insert into doctors (account_id, department_id)
-values($1, $2)
-returning account_id, department_id;
+insert into doctors (account_id, department_id, first_name, last_name)
+values($1, $2, $3, $4)
+returning account_id, department_id, first_name, last_name;
 
 -- name: ListActiveDoctors :many
 SELECT 
+    d.first_name, 
+    d.last_name,
     d.account_id,
     a.email,
     d.department_id,
@@ -19,6 +21,8 @@ ORDER BY a.email ASC;
 
 -- name: GetDoctorProfileByID :one
 SELECT 
+    d.first_name, 
+    d.last_name,
     d.account_id,
     a.email,
     a.status,
@@ -32,7 +36,7 @@ WHERE d.account_id = $1
 LIMIT 1;
 
 -- name: GetDoctorByAccountID :one
-select account_id, department_id 
+select account_id, department_id
 from doctors 
 where account_id = $1 limit 1;
 

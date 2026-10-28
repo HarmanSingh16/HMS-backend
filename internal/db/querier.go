@@ -39,7 +39,7 @@ type Querier interface {
 	GetBookedAppointmentsForDoctorInRange(ctx context.Context, arg GetBookedAppointmentsForDoctorInRangeParams) ([]GetBookedAppointmentsForDoctorInRangeRow, error)
 	GetDepartmentById(ctx context.Context, id int32) (Department, error)
 	GetDepartmentByName(ctx context.Context, lower string) (Department, error)
-	GetDoctorByAccountID(ctx context.Context, accountID int32) (Doctor, error)
+	GetDoctorByAccountID(ctx context.Context, accountID int32) (GetDoctorByAccountIDRow, error)
 	GetDoctorOfficeHours(ctx context.Context, doctorID int32) ([]DoctorOfficeHour, error)
 	GetDoctorProfileByID(ctx context.Context, accountID int32) (GetDoctorProfileByIDRow, error)
 	// Joins accounts so we can return the associated email and role in a single DB query

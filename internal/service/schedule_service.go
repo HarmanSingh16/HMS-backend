@@ -55,6 +55,8 @@ func (s *ScheduleService) ListDoctors(ctx context.Context, departmentID *int32) 
 		}
 		result = append(result, domain.DoctorProfile{
 			ID:             r.AccountID,
+			FirstName:      r.FirstName,
+			LastName:       r.LastName,
 			Email:          r.Email,
 			DepartmentID:   deptID,
 			DepartmentName: deptName,

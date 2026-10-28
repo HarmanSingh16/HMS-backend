@@ -12,38 +12,57 @@ import (
 )
 
 const createDoctor = `-- name: CreateDoctor :one
-insert into doctors (account_id, department_id)
-values($1, $2)
-returning account_id, department_id
+insert into doctors (account_id, department_id, first_name, last_name)
+values($1, $2, $3, $4)
+returning account_id, department_id, first_name, last_name
 `
 
 type CreateDoctorParams struct {
 	AccountID    int32       `json:"account_id"`
 	DepartmentID pgtype.Int4 `json:"department_id"`
+	FirstName    string      `json:"first_name"`
+	LastName     string      `json:"last_name"`
 }
 
 func (q *Queries) CreateDoctor(ctx context.Context, arg CreateDoctorParams) (Doctor, error) {
-	row := q.db.QueryRow(ctx, createDoctor, arg.AccountID, arg.DepartmentID)
+	row := q.db.QueryRow(ctx, createDoctor,
+		arg.AccountID,
+		arg.DepartmentID,
+		arg.FirstName,
+		arg.LastName,
+	)
 	var i Doctor
-	err := row.Scan(&i.AccountID, &i.DepartmentID)
+	err := row.Scan(
+		&i.AccountID,
+		&i.DepartmentID,
+		&i.FirstName,
+		&i.LastName,
+	)
 	return i, err
 }
 
 const getDoctorByAccountID = `-- name: GetDoctorByAccountID :one
-select account_id, department_id 
+select account_id, department_id
 from doctors 
 where account_id = $1 limit 1
 `
 
-func (q *Queries) GetDoctorByAccountID(ctx context.Context, accountID int32) (Doctor, error) {
+type GetDoctorByAccountIDRow struct {
+	AccountID    int32       `json:"account_id"`
+	DepartmentID pgtype.Int4 `json:"department_id"`
+}
+
+func (q *Queries) GetDoctorByAccountID(ctx context.Context, accountID int32) (GetDoctorByAccountIDRow, error) {
 	row := q.db.QueryRow(ctx, getDoctorByAccountID, accountID)
-	var i Doctor
+	var i GetDoctorByAccountIDRow
 	err := row.Scan(&i.AccountID, &i.DepartmentID)
 	return i, err
 }
 
 const getDoctorProfileByID = `-- name: GetDoctorProfileByID :one
 SELECT 
+    d.first_name, 
+    d.last_name,
     d.account_id,
     a.email,
     a.status,
@@ -58,6 +77,8 @@ LIMIT 1
 `
 
 type GetDoctorProfileByIDRow struct {
+	FirstName      string             `json:"first_name"`
+	LastName       string             `json:"last_name"`
 	AccountID      int32              `json:"account_id"`
 	Email          string             `json:"email"`
 	Status         AccountStatus      `json:"status"`
@@ -70,6 +91,8 @@ func (q *Queries) GetDoctorProfileByID(ctx context.Context, accountID int32) (Ge
 	row := q.db.QueryRow(ctx, getDoctorProfileByID, accountID)
 	var i GetDoctorProfileByIDRow
 	err := row.Scan(
+		&i.FirstName,
+		&i.LastName,
 		&i.AccountID,
 		&i.Email,
 		&i.Status,
@@ -82,6 +105,8 @@ func (q *Queries) GetDoctorProfileByID(ctx context.Context, accountID int32) (Ge
 
 const listActiveDoctors = `-- name: ListActiveDoctors :many
 SELECT 
+    d.first_name, 
+    d.last_name,
     d.account_id,
     a.email,
     d.department_id,
@@ -96,6 +121,8 @@ ORDER BY a.email ASC
 `
 
 type ListActiveDoctorsRow struct {
+	FirstName      string             `json:"first_name"`
+	LastName       string             `json:"last_name"`
 	AccountID      int32              `json:"account_id"`
 	Email          string             `json:"email"`
 	DepartmentID   pgtype.Int4        `json:"department_id"`
@@ -113,6 +140,8 @@ func (q *Queries) ListActiveDoctors(ctx context.Context, departmentID pgtype.Int
 	for rows.Next() {
 		var i ListActiveDoctorsRow
 		if err := rows.Scan(
+			&i.FirstName,
+			&i.LastName,
 			&i.AccountID,
 			&i.Email,
 			&i.DepartmentID,

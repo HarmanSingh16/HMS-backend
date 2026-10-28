@@ -27,7 +27,9 @@ CREATE TABLE departments (
 
 CREATE TABLE doctors (
   account_id INT PRIMARY KEY REFERENCES accounts(id),
-  department_id INT REFERENCES departments(id)
+  department_id INT REFERENCES departments(id),
+  first_name varchar(100) not null, 
+  last_name varchar(100) not null
 );
 
 CREATE TABLE patients (

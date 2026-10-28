@@ -192,6 +192,8 @@ type Department struct {
 type Doctor struct {
 	AccountID    int32       `json:"account_id"`
 	DepartmentID pgtype.Int4 `json:"department_id"`
+	FirstName    string      `json:"first_name"`
+	LastName     string      `json:"last_name"`
 }
 
 type DoctorOfficeHour struct {

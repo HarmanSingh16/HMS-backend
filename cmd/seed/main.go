@@ -122,24 +122,26 @@ func main() {
 	// 4. Seed Doctors (12 doctor accounts & doctor profiles >= 10)
 	type doctorInfo struct {
 		email        string
+		firstName    string
+		lastName     string
 		deptIndex    int
 		prefix       string
 		specialtyDay int
 	}
 
 	doctorsData := []doctorInfo{
-		{"dr.sarah.connor@hospital.com", 0, "Dr. Connor", 1},
-		{"dr.john.watson@hospital.com", 1, "Dr. Watson", 2},
-		{"dr.gregory.house@hospital.com", 2, "Dr. House", 3},
-		{"dr.meredith.grey@hospital.com", 3, "Dr. Grey", 4},
-		{"dr.stephen.strange@hospital.com", 4, "Dr. Strange", 5},
-		{"dr.leonard.mccoy@hospital.com", 5, "Dr. McCoy", 1},
-		{"dr.cristina.yang@hospital.com", 6, "Dr. Yang", 2},
-		{"dr.shaun.murphy@hospital.com", 7, "Dr. Murphy", 3},
-		{"dr.allison.cameron@hospital.com", 8, "Dr. Cameron", 4},
-		{"dr.robert.chase@hospital.com", 9, "Dr. Chase", 5},
-		{"dr.james.wilson@hospital.com", 10, "Dr. Wilson", 1},
-		{"dr.lisa.cuddy@hospital.com", 11, "Dr. Cuddy", 2},
+		{"dr.sarah.connor@hospital.com", "Sarah", "Connor", 0, "Dr. Connor", 1},
+		{"dr.john.watson@hospital.com", "John", "Watson", 1, "Dr. Watson", 2},
+		{"dr.gregory.house@hospital.com", "Gregory", "House", 2, "Dr. House", 3},
+		{"dr.meredith.grey@hospital.com", "Meredith", "Grey", 3, "Dr. Grey", 4},
+		{"dr.stephen.strange@hospital.com", "Stephen", "Strange", 4, "Dr. Strange", 5},
+		{"dr.leonard.mccoy@hospital.com", "Leonard", "McCoy", 5, "Dr. McCoy", 1},
+		{"dr.cristina.yang@hospital.com", "Cristina", "Yang", 6, "Dr. Yang", 2},
+		{"dr.shaun.murphy@hospital.com", "Shaun", "Murphy", 7, "Dr. Murphy", 3},
+		{"dr.allison.cameron@hospital.com", "Allison", "Cameron", 8, "Dr. Cameron", 4},
+		{"dr.robert.chase@hospital.com", "Robert", "Chase", 9, "Dr. Chase", 5},
+		{"dr.james.wilson@hospital.com", "James", "Wilson", 10, "Dr. Wilson", 1},
+		{"dr.lisa.cuddy@hospital.com", "Lisa", "Cuddy", 11, "Dr. Cuddy", 2},
 	}
 
 	doctorAccountIDs := make([]int32, 0, len(doctorsData))
@@ -156,9 +158,9 @@ func main() {
 
 		deptID := deptIDs[d.deptIndex]
 		_, err = tx.Exec(ctx, `
-			INSERT INTO doctors (account_id, department_id)
-			VALUES ($1, $2);
-		`, docAccID, deptID)
+			INSERT INTO doctors (account_id, department_id, first_name, last_name)
+			VALUES ($1, $2, $3, $4);
+		`, docAccID, deptID, d.firstName, d.lastName)
 		if err != nil {
 			log.Fatalf("failed to insert doctor profile %s: %v", d.email, err)
 		}
