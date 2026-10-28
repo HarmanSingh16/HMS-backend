@@ -1167,3 +1167,342 @@ For frontend planning, be aware that the following features exist in the project
 1. **Admin Staff Onboarding (`/api/v1/admin/invites`):** Currently, patient intake generates invites (`POST /receptionist/patients`); staff invites by admin are planned for the next sprint.
 2. **Admin Account Management (`/api/v1/admin/accounts`, `/deactivate`):** Staff deactivation endpoints.
 3. **Clinical Charts & Vitals:** Clinical consultation notes, append-only medical records, and vitals recording (BP, pulse, temp, SpO2) are scheduled for Phase 2. Ensure your frontend design leaves a tab or placeholder for Clinical Records in the patient and doctor views.
+
+---
+
+## 7. End-to-End Feature Walkthroughs & User Journeys
+
+This section details how each front-facing feature is assembled, what views/screens are involved, what sequence of API endpoints must be called, how state flows between them, and how edge cases must be handled in the UI.
+
+---
+
+### Flow 1: Authentication, Onboarding & Session Lifecycle
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User / Patient
+    participant UI as Frontend App
+    participant API as Backend (/api/v1)
+
+    Note over User, API: Scenario A: User Login & Session Bootstrap
+    User->>UI: Enters email and password on /login
+    UI->>API: POST /auth/login { email, password }
+    API-->>UI: 200 OK { access_token, refresh_token, expires_in }
+    UI->>UI: Save tokens in secure storage
+    UI->>API: GET /auth/me (Authorization: Bearer <access_token>)
+    API-->>UI: 200 OK { id, email, role }
+    UI->>UI: Redirect to role dashboard (/admin, /doctor, /receptionist, /patient)
+
+    Note over User, API: Scenario B: Invite Claiming (Account Activation)
+    User->>UI: Clicks email link: /claim-invite?token=ABC123XYZ
+    UI->>API: GET /auth/invite/verify?token=ABC123XYZ
+    alt Token Valid
+        API-->>UI: 200 OK { email, role }
+        UI->>User: Displays greeting with email and "Set Your Password" form
+        User->>UI: Submits new password (min 8 chars)
+        UI->>API: POST /auth/invite/claim { token, password }
+        API-->>UI: 200 OK { message: "Account activated successfully" }
+        UI->>User: Show success banner and redirect to /login
+    else Token Expired / Claimed
+        API-->>UI: 404 INVITE_NOT_FOUND or 409 INVITE_ALREADY_CLAIMED
+        UI->>User: Display error "Invite link is invalid or already used"
+    end
+
+    Note over User, API: Scenario C: Silent Token Refresh (HTTP Interceptor)
+    UI->>API: GET /appointments (expired access token)
+    API-->>UI: 401 Unauthorized { code: "TOKEN_EXPIRED" }
+    UI->>API: POST /auth/refresh { refresh_token }
+    alt Refresh Success
+        API-->>UI: 200 OK { access_token, refresh_token, expires_in }
+        UI->>UI: Update stored token pair
+        UI->>API: Retry original request GET /appointments
+        API-->>UI: 200 OK (data delivered seamlessly)
+    else Refresh Fails (Token Expired / Deactivated)
+        API-->>UI: 401 INVALID_TOKEN or 403 ACCOUNT_DEACTIVATED
+        UI->>UI: Clear tokens and redirect to /login
+    end
+```
+
+#### Step-by-Step Implementation Details:
+1. **Login Page (`/login`):**
+   - Form fields: Email, Password.
+   - Endpoint: `POST /api/v1/auth/login`.
+   - On success: Store tokens, call `GET /api/v1/auth/me` to get the `role` and `id`, then route:
+     - `admin` $\rightarrow$ `/admin/departments`
+     - `doctor` $\rightarrow$ `/doctor/appointments`
+     - `receptionist` $\rightarrow$ `/receptionist/queue`
+     - `patient` $\rightarrow$ `/patient/appointments`
+2. **Invite Activation Page (`/claim-invite`):**
+   - Parse `?token=...` from the query string.
+   - Immediately trigger `GET /api/v1/auth/invite/verify?token=...`.
+   - Render a card: "Welcome! Activating account for `{email}` ({role})".
+   - When the user enters a password ($\ge 8$ chars) and confirms, send `POST /api/v1/auth/invite/claim`.
+3. **Logout Button:**
+   - Call `POST /api/v1/auth/logout` with Bearer token.
+   - Clear storage and navigate to `/login`.
+
+---
+
+### Flow 2: Receptionist — Patient Intake & Scheduling
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Rec as Receptionist
+    participant UI as Frontend (Desk View)
+    participant API as Backend (/api/v1)
+
+    Note over Rec, API: Step 1: Patient Intake & Registration
+    Rec->>UI: Fills intake form (Name, DOB, Phone, Email)
+    UI->>API: POST /receptionist/patients
+    API-->>UI: 201 Created { patient: { account_id, email, status: "invited", ... } }
+    UI->>Rec: "Patient registered! Account invite dispatched to patient email."
+
+    Note over Rec, API: Step 2: Slot Discovery & Booking
+    Rec->>UI: Clicks "Book Appointment" for the patient
+    UI->>API: GET /departments
+    API-->>UI: 200 OK [ { id: 1, name: "Cardiology" }, ... ]
+    Rec->>UI: Selects "Cardiology"
+    UI->>API: GET /doctors?department_id=1
+    API-->>UI: 200 OK [ { id: 2, email: "dr.connor@hospital.com", ... } ]
+    Rec->>UI: Selects Dr. Connor and selects Date (e.g. tomorrow)
+    UI->>API: GET /doctors/2/available-slots?date=2026-10-28
+    API-->>UI: 200 OK { slots: [ { starts_at: "2026-10-28T09:00:00Z", is_walk_in_eligible: false }, ... ] }
+    Rec->>UI: Picks 09:15 AM slot and confirms
+    UI->>API: POST /appointments { doctor_id: 2, patient_id: 14, starts_at: "2026-10-28T09:15:00Z" }
+    alt Slot Available
+        API-->>UI: 201 Created { status: "booked", ... }
+        UI->>Rec: Show booking confirmation banner
+    else Slot Already Taken by Concurrent Staff
+        API-->>UI: 409 Conflict { code: "SLOT_CONFLICT" }
+        UI->>Rec: Error: "Slot was just booked by another staff member. Please pick another."
+    end
+```
+
+#### Step-by-Step Implementation Details:
+1. **Patient Intake Form (`/receptionist/patients/new`):**
+   - Inputs: First Name, Last Name, Date of Birth (`YYYY-MM-DD`), Phone Number (10-12 digits), Email, Gender, Address.
+   - Call `POST /api/v1/receptionist/patients`.
+   - On success, patient profile is returned. Offer a one-click button: *"Book appointment for this patient"*, which passes `patient_id` directly into the booking modal.
+2. **Patient Directory & Search (`/receptionist/patients`):**
+   - Search input box with debounced typing (300ms).
+   - Call `GET /api/v1/patients?query=<keyword>&page=1&limit=20`.
+   - Table columns: Full Name, DOB, Phone Number, Status (`invited`/`active`), Actions (`Book Visit`, `Edit`).
+3. **Appointment Booking Wizard:**
+   - **Step 1 (Department):** Call `GET /api/v1/departments` and render cards/select dropdown.
+   - **Step 2 (Doctor):** Call `GET /api/v1/doctors?department_id=<selected>` and render available doctors.
+   - **Step 3 (Slot Picker):** Date picker bounded to today + 7 days. When date changes, call `GET /api/v1/doctors/:id/available-slots?date=YYYY-MM-DD`. Render green buttons for available 15m slots.
+   - **Step 4 (Submit):** Send `POST /api/v1/appointments` with `{ doctor_id, patient_id, starts_at }`.
+
+---
+
+### Flow 3: Receptionist — Walk-Ins, Check-Ins & No-Show Reversions
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Rec as Receptionist
+    participant UI as Frontend (Queue View)
+    participant API as Backend (/api/v1)
+
+    Note over Rec, API: Scenario A: Immediate Walk-In Booking
+    Rec->>UI: Selects Doctor for a walk-in patient standing at the counter
+    UI->>API: GET /doctors/:id/available-slots
+    Note over API, UI: Slot matching current time has is_walk_in_eligible = true
+    API-->>UI: 200 OK { slots: [ ..., { starts_at: "10:00", is_walk_in_eligible: true } ] }
+    Rec->>UI: Clicks "Book Walk-In Now" on eligible slot
+    UI->>API: POST /appointments { doctor_id, patient_id, starts_at }
+    API-->>UI: 201 Created { status: "checked_in" }
+    UI->>Rec: "Walk-in booked and automatically checked in! Patient is in queue."
+
+    Note over Rec, API: Scenario B: Patient Arrival Check-In
+    Rec->>UI: Patient arrives for 11:00 AM booking
+    UI->>API: GET /appointments?status=booked
+    API-->>UI: 200 OK { appointments: [ { id: 18, patient_name: "Alice", status: "booked" } ] }
+    Rec->>UI: Clicks "Check In" button
+    UI->>API: POST /appointments/18/check-in
+    API-->>UI: 200 OK { id: 18, status: "checked_in" }
+    UI->>Rec: Badge updates to "checked_in"
+
+    Note over Rec, API: Scenario C: Revert Erroneous No-Show
+    Note over API: Worker automatically marked appointment as no_show at slot end
+    Rec->>UI: Patient arrived 5 minutes late; shows in No-Show list
+    UI->>API: GET /appointments?status=no_show
+    Rec->>UI: Clicks "Revert No-Show"
+    UI->>API: POST /appointments/18/revert-no-show
+    API-->>UI: 200 OK { id: 18, status: "checked_in" }
+    UI->>Rec: Patient moved back into active waiting queue
+```
+
+#### Step-by-Step Implementation Details:
+1. **Front-Desk Daily Queue View (`/receptionist/queue`):**
+   - Filter tabs: `Booked (Arriving)`, `Checked-In (Waiting)`, `No-Show`, `Completed`.
+   - Call `GET /api/v1/appointments?from=<today_00:00>&to=<today_23:59>&status=<tab>`.
+2. **Action Buttons in Queue Rows:**
+   - When row has `status === 'booked'`: Render primary button **"Check In"** $\rightarrow$ calls `POST /api/v1/appointments/:id/check-in`.
+   - When row has `status === 'no_show'`: Render warning button **"Revert No-Show"** $\rightarrow$ calls `POST /api/v1/appointments/:id/revert-no-show`.
+   - When row has `status === 'booked'` or `'checked_in'`: Render secondary button **"Cancel"** $\rightarrow$ opens modal asking for cancellation reason, then calls `POST /api/v1/appointments/:id/cancel` with `{ "reason": "..." }`.
+3. **Walk-In Slot Highlights:**
+   - In the slot picker, if `slot.is_walk_in_eligible === true`, display a distinctive badge: `"Walk-in Eligible (Immediate)"`. Clicking it alerts the receptionist that the patient will be placed directly in the doctor's queue.
+
+---
+
+### Flow 4: Doctor — Schedule Management & Preview Conflict Check
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Doc as Doctor
+    participant UI as Frontend (Schedule Settings)
+    participant API as Backend (/api/v1)
+
+    Note over Doc, API: Step 1: View Current Working Hours & Leaves
+    Doc->>UI: Opens "My Working Schedule"
+    UI->>API: GET /doctors/me/schedule (or GET /doctors/:id/schedule)
+    API-->>UI: 200 OK { office_hours: [...], upcoming_time_off: [...] }
+    UI->>Doc: Displays weekly calendar (Mon-Fri 09:00 - 17:00)
+
+    Note over Doc, API: Step 2: Edit Hours with Preview Mode
+    Doc->>UI: Modifies Thursday shift: Closes at 13:00 instead of 17:00
+    UI->>API: PUT /doctors/:id/office-hours?preview=true { schedules: [...] }
+    API-->>UI: 200 OK { conflicts_count: 2, affected_appointments: [ { id: 45, starts_at: "14:00" }, { id: 46, starts_at: "15:30" } ] }
+    UI->>Doc: Modal: "Warning: Changing hours will cancel 2 existing patient bookings. Affected patients will be emailed. Do you want to proceed?"
+
+    Note over Doc, API: Step 3: Confirm Changes
+    Doc->>UI: Clicks "Confirm & Update Schedule"
+    UI->>API: PUT /doctors/:id/office-hours (preview omitted or false) { schedules: [...] }
+    API-->>UI: 200 OK (Schedule applied, appointments cancelled, outbox emails enqueued)
+    UI->>Doc: Success banner: "Schedule updated successfully."
+```
+
+#### Step-by-Step Implementation Details:
+1. **Weekly Schedule Matrix (`/doctor/schedule`):**
+   - Days 0 to 6 with toggles for active days.
+   - Multiple intervals per day (e.g., Morning Shift: `09:00` - `12:00`, Afternoon Shift: `13:00` - `17:00`).
+   - Validate client-side: `start_time < end_time`, no overlapping intervals.
+2. **Two-Phase Confirmation Flow:**
+   - When the doctor clicks "Save Changes":
+     - First, send `PUT /api/v1/doctors/:id/office-hours?preview=true`.
+     - If `conflicts_count === 0`: Instantly call `PUT /api/v1/doctors/:id/office-hours` (without preview).
+     - If `conflicts_count > 0`: Open a modal displaying the list of affected appointments with times and patient IDs, stating clearly that saving will cancel them and send removal emails. Upon confirmation, fire the actual `PUT`.
+3. **Booking Vacation / Time-Off Modal:**
+   - Date range picker (`starts_at`, `ends_at`) and `reason` input.
+   - Call `POST /api/v1/doctors/:id/time-off`.
+   - On success, reload upcoming leaves from `GET /api/v1/doctors/:id/schedule`.
+
+---
+
+### Flow 5: Doctor — Consultation Queue & Completion
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Doc as Doctor
+    participant UI as Frontend (Doctor Dashboard)
+    participant API as Backend (/api/v1)
+
+    Doc->>UI: Navigates to Consultation Queue
+    UI->>API: GET /appointments?status=checked_in
+    Note over API: Backend automatically scopes to appointments where doctor_id == doc.id
+    API-->>UI: 200 OK { appointments: [ { id: 18, patient_first_name: "Alice", starts_at: "10:00", ... } ] }
+    Doc->>UI: Clicks "View Patient Details"
+    UI->>API: GET /patients/10
+    API-->>UI: 200 OK { first_name: "Alice", dob: "1990-05-14", phone: "+1-555-0101", ... }
+    Doc->>UI: Conducts consultation with patient
+    Doc->>UI: Clicks "Complete Consultation"
+    UI->>API: POST /appointments/18/complete
+    API-->>UI: 200 OK { id: 18, status: "completed" }
+    UI->>Doc: Patient removed from queue; marked completed
+```
+
+#### Step-by-Step Implementation Details:
+1. **Waiting Room View (`/doctor/queue`):**
+   - Poll or refresh `GET /api/v1/appointments?status=checked_in` every 30-60 seconds.
+   - Shows patient card with name, appointment time, and arrival duration.
+2. **Consultation Summary Dialog:**
+   - Button: "Complete Visit" $\rightarrow$ sends `POST /api/v1/appointments/:id/complete`.
+   - Button: "View Transition History" $\rightarrow$ sends `GET /api/v1/appointments/:id/history` to inspect when the patient booked and arrived.
+
+---
+
+### Flow 6: Patient — Portal & Self-Service Cancellation
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Pat as Patient
+    participant UI as Frontend (Patient Portal)
+    participant API as Backend (/api/v1)
+
+    Pat->>UI: Logs in to Patient Portal
+    UI->>API: GET /appointments (scoped to patient.id)
+    API-->>UI: 200 OK { appointments: [ { id: 18, doctor_email: "dr.connor@hospital.com", starts_at: "2026-10-29T10:00:00Z", status: "booked" } ] }
+    UI->>Pat: Renders upcoming appointment card
+
+    Note over Pat, API: Case 1: Cancellation Allowed (>= 1 Hour Prior)
+    Pat->>UI: Clicks "Cancel Appointment" (current time is 24h before visit)
+    UI->>Pat: Prompt: "Please provide a reason for cancellation"
+    Pat->>UI: Enters "Work emergency"
+    UI->>API: POST /appointments/18/cancel { reason: "Work emergency" }
+    API-->>UI: 200 OK { id: 18, status: "cancelled", cancellation_reason: "Work emergency" }
+    UI->>Pat: Status badge changes to "Cancelled"; Reminder email revoked
+
+    Note over Pat, API: Case 2: Cancellation Blocked (< 1 Hour Prior)
+    Pat->>UI: Attempts to cancel appointment starting in 35 minutes
+    UI->>UI: Frontend detects (starts_at - now) < 60 minutes
+    UI->>Pat: Disables Cancel button or shows modal: "Online cancellation is closed within 1 hour of the visit. Please call the front desk directly."
+```
+
+#### Step-by-Step Implementation Details:
+1. **Patient Dashboard (`/patient/appointments`):**
+   - Call `GET /api/v1/appointments` to list past and upcoming visits.
+2. **1-Hour Cancellation Cutoff UI Handling:**
+   - For each appointment with `status === 'booked'`:
+     - Calculate `diffMinutes = differenceInMinutes(startsAt, new Date())`.
+     - If `diffMinutes < 60`:
+       - Disable the "Cancel" button or show a tooltip: *"Cancellations within 1 hour must be called in directly to the clinic front desk."*
+     - If `diffMinutes >= 60`:
+       - Enable "Cancel" button.
+       - On click, show dialog with required textarea for `reason` (min 3 chars).
+       - Call `POST /api/v1/appointments/:id/cancel` with `{ "reason": reason }`.
+       - If backend returns `422 CANCELLATION_CUTOFF_EXCEEDED`, display friendly error banner.
+3. **Patient Profile (`/patient/profile`):**
+   - Call `GET /api/v1/patients/:id` to show personal demographics.
+   - Allow editing phone number and address via `PUT /api/v1/patients/:id`.
+
+---
+
+### Flow 7: Admin — Department & Clinic Governance
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Admin
+    participant UI as Frontend (Admin Console)
+    participant API as Backend (/api/v1)
+
+    Admin->>UI: Opens Department Management
+    UI->>API: GET /departments
+    API-->>UI: 200 OK [ { id: 1, name: "Cardiology" }, ... ]
+    Admin->>UI: Enters "Radiology" in "Create Department"
+    UI->>API: POST /departments { name: "Radiology" }
+    API-->>UI: 201 Created { id: 13, name: "Radiology" }
+    UI->>Admin: Department created and added to table
+
+    Admin->>UI: Renames "Radiology" to "Diagnostic Imaging"
+    UI->>API: PUT /departments/13 { name: "Diagnostic Imaging" }
+    API-->>UI: 200 OK { id: 13, name: "Diagnostic Imaging" }
+    UI->>Admin: Department name updated
+```
+
+#### Step-by-Step Implementation Details:
+1. **Department CRUD View (`/admin/departments`):**
+   - List all departments via `GET /api/v1/departments`.
+   - Inline add form: Input for department name (2-100 chars), button "Create" $\rightarrow$ calls `POST /api/v1/departments`.
+   - Edit dialog: Call `PUT /api/v1/departments/:id`. Handle `409 DEPARTMENT_NAME_TAKEN` by highlighting the field in red: *"A department with this name already exists"*.
+2. **Hospital-Wide Appointment Monitor (`/admin/appointments`):**
+   - Global appointments table with filters: Date range (`from`, `to`), Department (`department_id`), Doctor (`doctor_id`), Status (`status`).
+   - Call `GET /api/v1/appointments`.
+   - Admins can inspect the state timeline of any appointment via `GET /api/v1/appointments/:id/history`.
+

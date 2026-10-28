@@ -49,7 +49,7 @@ type Querier interface {
 	GetPatientByAccountID(ctx context.Context, accountID int32) (GetPatientByAccountIDRow, error)
 	GetPendingNotificationsForDispatch(ctx context.Context, arg GetPendingNotificationsForDispatchParams) ([]GetPendingNotificationsForDispatchRow, error)
 	ListAccounts(ctx context.Context, arg ListAccountsParams) ([]ListAccountsRow, error)
-	ListActiveDoctors(ctx context.Context, dollar_1 int32) ([]ListActiveDoctorsRow, error)
+	ListActiveDoctors(ctx context.Context, departmentID pgtype.Int4) ([]ListActiveDoctorsRow, error)
 	ListAppointmentStatusEventsByAppointmentID(ctx context.Context, appointmentID int32) ([]ListAppointmentStatusEventsByAppointmentIDRow, error)
 	ListAppointmentsWithDetails(ctx context.Context, arg ListAppointmentsWithDetailsParams) ([]ListAppointmentsWithDetailsRow, error)
 	ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([]ListAuditLogsRow, error)

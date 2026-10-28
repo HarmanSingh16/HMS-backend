@@ -33,9 +33,9 @@ func NewScheduleService(querier db.Querier, pool *pgxpool.Pool, cfg *config.Conf
 // 1. Doctor Directory
 // ----------------------------------------------------------------------
 func (s *ScheduleService) ListDoctors(ctx context.Context, departmentID *int32) ([]domain.DoctorProfile, error) {
-	var deptParam int32
+	var deptParam pgtype.Int4
 	if departmentID != nil {
-		deptParam = *departmentID
+		deptParam = pgtype.Int4{Int32: *departmentID, Valid: true}
 	}
 	rows, err := s.querier.ListActiveDoctors(ctx, deptParam)
 	if err != nil {

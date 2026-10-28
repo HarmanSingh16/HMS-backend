@@ -14,7 +14,7 @@ FROM doctors d
 JOIN accounts a ON a.id = d.account_id
 LEFT JOIN departments dept ON dept.id = d.department_id
 WHERE a.status = 'active'
-  AND ($1::int IS NULL OR d.department_id = $1)
+  AND (sqlc.narg('department_id')::int IS NULL OR d.department_id = sqlc.narg('department_id'))
 ORDER BY a.email ASC;
 
 -- name: GetDoctorProfileByID :one
@@ -35,3 +35,4 @@ LIMIT 1;
 select account_id, department_id 
 from doctors 
 where account_id = $1 limit 1;
+

@@ -103,8 +103,8 @@ type ListActiveDoctorsRow struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
-func (q *Queries) ListActiveDoctors(ctx context.Context, dollar_1 int32) ([]ListActiveDoctorsRow, error) {
-	rows, err := q.db.Query(ctx, listActiveDoctors, dollar_1)
+func (q *Queries) ListActiveDoctors(ctx context.Context, departmentID pgtype.Int4) ([]ListActiveDoctorsRow, error) {
+	rows, err := q.db.Query(ctx, listActiveDoctors, departmentID)
 	if err != nil {
 		return nil, err
 	}
